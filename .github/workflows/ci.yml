@@ -164,6 +164,27 @@ jobs:
           done
           grep -q '"status":"ok"' /tmp/reponse
 
+      - name: Vérifier les en-têtes de sécurité (une seule fois, X-Frame-Options DENY)
+        run: |
+          echoue=0
+          for path in / /api/v1/health /img/app_icon_32.png; do
+            curl -sS -o /dev/null -D /tmp/entetes --max-time 10 "http://127.0.0.1:8080${path}"
+            echo "== ${path}"
+            grep -i -E '^(HTTP/|x-content-type-options:|x-frame-options:|referrer-policy:)' /tmp/entetes || true
+            for entete in x-content-type-options x-frame-options referrer-policy; do
+              n=$(grep -c -i "^${entete}:" /tmp/entetes || true)
+              if [ "$n" != "1" ]; then
+                echo "::error::${path} : ${entete} présent ${n} fois au lieu d'une"
+                echoue=1
+              fi
+            done
+            if ! grep -q -i -E '^x-frame-options: DENY' /tmp/entetes; then
+              echo "::error::${path} : X-Frame-Options différent de DENY"
+              echoue=1
+            fi
+          done
+          exit $echoue
+
       - name: Arrêter le conteneur
         if: always()
         run: docker rm -f 3omar-ci || true
