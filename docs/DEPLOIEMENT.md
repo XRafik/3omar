@@ -77,6 +77,21 @@ labels:
   - "traefik.http.services.3omar.loadbalancer.server.port=80"
 ```
 
+## En-têtes de sécurité
+
+Deux sources, sans recouvrement :
+
+- `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` et `Referrer-Policy: strict-origin-when-cross-origin` : posés une seule fois par le Nginx de l'image (`docker/release/nginx.conf`), sur les pages, l'API et les fichiers statiques. Les mêmes en-têtes émis par le middleware `SecurityHeaders` sont masqués (`fastcgi_hide_header`) pour ne pas être envoyés deux fois. Les valeurs Nginx doivent rester celles du middleware : `SecurityHeadersTest` le vérifie.
+- `Content-Security-Policy` et, en HTTPS, `Strict-Transport-Security` : posés par le middleware `SecurityHeaders` sur les pages web.
+
+Le job CI `Build image release` démarre l'image et échoue si l'un des trois en-têtes Nginx manque ou apparaît deux fois sur `/`, `/api/v1/health` ou une image de `public/img/`. Pour vérifier en production :
+
+```bash
+curl -sSI https://3omar.ma/ | grep -i -E "frame-options|referrer-policy|content-type-options"
+```
+
+Chaque en-tête doit apparaître une seule fois. Un proxy placé devant le conteneur (Traefik, Cloudflare) ne doit pas les ajouter à nouveau.
+
 ## Health check
 
 Le conteneur embarque un `HEALTHCHECK` Docker via l'endpoint `/up` de Laravel :

@@ -47,6 +47,32 @@ class SecurityHeadersTest extends TestCase
         $this->assertSame('Off', $ini['PHP']['expose_php'] ?? null);
     }
 
+    /**
+     * Dans l'image de production, Nginx est la seule source de ces trois
+     * en-têtes (#185) : ses valeurs doivent rester celles du middleware.
+     */
+    public function test_release_nginx_sends_the_middleware_header_values(): void
+    {
+        $conf = file_get_contents(base_path('docker/release/nginx.conf'));
+        $headers = $this->get('/')->assertOk()->headers;
+
+        foreach (['X-Content-Type-Options', 'X-Frame-Options', 'Referrer-Policy'] as $name) {
+            preg_match_all('/^\s*add_header\s+'.preg_quote($name, '/').'\s+"([^"]+)"\s+always;/mi', $conf, $values);
+
+            $this->assertNotEmpty($values[1], "{$name} absent de docker/release/nginx.conf.");
+            $this->assertSame(
+                [$headers->get($name)],
+                array_values(array_unique($values[1])),
+                "{$name} : Nginx et le middleware SecurityHeaders divergent.",
+            );
+            $this->assertMatchesRegularExpression(
+                '/^\s*fastcgi_hide_header\s+'.preg_quote($name, '/').';/mi',
+                $conf,
+                "{$name} : la valeur PHP n'est pas masquée, l'en-tête serait envoyé deux fois.",
+            );
+        }
+    }
+
     public function test_hsts_not_set_on_http(): void
     {
         $response = $this->get('/')->assertOk();
